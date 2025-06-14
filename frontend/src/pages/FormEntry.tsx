@@ -10,15 +10,14 @@ const FormEntry = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
+    <div>
       <input
         type="text"
-        className="input mb-4"
         placeholder="Enter Form ID"
         value={formId}
         onChange={(e) => setFormId(e.target.value)}
       />
-      <button className="btn" onClick={handleEnter}>
+      <button onClick={handleEnter}>
         Join Form
       </button>
     </div>

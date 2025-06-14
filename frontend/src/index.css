@@ -1,7 +1,1 @@
-.input {
-  @apply w-full px-4 py-2 border border-gray-300 rounded-md;
-}
 
-.btn {
-  @apply px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600;
-}
