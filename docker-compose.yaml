@@ -19,6 +19,55 @@ services:
     restart: unless-stopped
     ports:
     - "6379:6379"
+  forms-service:
+    build: ./forms-service
+    container_name: forms-service
+    environment:
+      DB_HOST: postgres
+      DB_NAME: realtimeform
+      DB_USER: postgres
+      DB_PASS: password
+      JWT_SECRET: your_jwt_secret
+      JWT_EXPIRATION: 1d
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - backend
+
+  room-service:
+    build: ./room-service
+    container_name: room-service
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_PASSWORD: ""
+      JWT_SECRET: your_jwt_secret
+      JWT_EXPIRATION: 1h
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    depends_on:
+      - redis
+    networks:
+      - backend
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    environment:
+      VITE_API_URL: http://forms-service:3000
+      VITE_ROOM_URL: http://room-service:4000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - forms-service
+      - room-service
+    networks:
+      - backend
 
 
 volumes:
