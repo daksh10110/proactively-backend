@@ -1,0 +1,25 @@
+import { Request, Response as ExpressResponse } from 'express';
+import { Response as ResponseModel } from '../models/Response';
+
+export const postResponse = async (req: Request, res: ExpressResponse) => {
+  try {
+    const { formId, responseData, numberOfPeople } = req.body;
+
+    if (!formId || !responseData) {
+      res.status(400).json({ message: 'formId and responseData are required.' });
+      return;
+    }
+
+    const response = await ResponseModel.create({
+      formId,
+      responseData,
+      numberOfPeople: numberOfPeople || 1,
+    });
+
+    res.status(201).json(response);
+    return;
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to submit response.', error });
+    return;
+  }
+};
