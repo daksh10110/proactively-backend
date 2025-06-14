@@ -1,6 +1,8 @@
 # Proactively Backend
 
 This guide explains how to run the Proactively backend using Docker Compose.
+**NOTE:**
+**THE FORM GETS SUBMITTED WHEN THE ADMIN CLOSES THE ROOM.**
 
 ## Prerequisites
 
