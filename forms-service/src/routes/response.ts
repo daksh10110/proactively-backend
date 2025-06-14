@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { postResponse } from '../controllers/responseController';
+import { getResponses, postResponse } from '../controllers/responseController';
 
 const router = Router();
 
 router.post('/', postResponse);
+router.get('/', getResponses);
 
 export default router;

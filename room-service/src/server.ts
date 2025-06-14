@@ -30,6 +30,7 @@ app.get('/room-status/:formId', async (req, res) => {
   const key = roomsKey(formId);
   const isOpenRaw = await redis.hget(key, 'isOpen');
   
+
   const isOpen = isOpenRaw?.trim().toLowerCase() === 'true';
   res.json({ formId, isOpen });
 });
@@ -52,9 +53,28 @@ app.post('/close-room/:formId', async (req, res) => {
 
   const currentState = await redis.hgetall(`formdata:${formId}`);
   console.log(`Auto-submitting form ${formId}:`, currentState);
-
-  res.json({ message: `Room ${formId} closed and data submitted.` });
-  return;
+  try {
+    const activeUsers = await redis.smembers(`active_users:${formId}`);
+    try {
+      await fetch('http://localhost:3000/api/response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          formId,
+          activeUsers: activeUsers.length,
+          responseData: currentState,
+        }),
+      });
+    } catch (err) {
+      console.error('Failed to notify /api/response:', err);
+    }
+    res.json({ message: `Room ${formId} closed and data submitted.` });
+    return;
+  } catch (error) {
+    console.error('Failed to auto-submit form data:', error);
+    res.status(500).json({ message: 'Failed to auto-submit form data.', error });
+    return;
+  }
 });
 
 /**

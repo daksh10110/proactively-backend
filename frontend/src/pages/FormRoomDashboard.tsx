@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { SERVER_URL_FORM } from '../config'; // e.g., http://localhost:3001/forms
 
 interface Form {
   id: string;
-  name: string;
+  title: string;
 }
 
 interface RoomStatus {
   formId: string;
-  activeUsers: number;
   isRoomEnabled: boolean;
 }
 
@@ -44,11 +44,10 @@ export default function FormRoomDashboard() {
     try {
       const res = await axios.get(`http://localhost:4000/room-status/${formId}`);
       setRoomStatuses(prev => ({
-          ...prev,
-          [formId]: {
+        ...prev,
+        [formId]: {
           formId,
           isRoomEnabled: res.data.isOpen,
-          activeUsers: res.data.activeUsers ?? prev[formId]?.activeUsers ?? 0, // fallback
         },
       }));
     } catch (err) {
@@ -86,9 +85,10 @@ export default function FormRoomDashboard() {
         <thead>
           <tr>
             <th>Form Name</th>
+            <th>Form ID</th>
             <th>Room Enabled</th>
-            <th>Active Users</th>
             <th>Toggle Room</th>
+            <th>Results</th>
           </tr>
         </thead>
         <tbody>
@@ -97,15 +97,18 @@ export default function FormRoomDashboard() {
             const isEnabled = status?.isRoomEnabled;
             return (
               <tr key={form.id}>
-                <td>{form.name}</td>
+                <td>{form.title}</td>
+                <td>{form.id}</td>
                 <td>{isEnabled ? 'Yes' : 'No'}</td>
-                <td>{status ? status.activeUsers : 'Loading...'}</td>
                 <td>
                   <button
                     onClick={() => toggleRoom(form.id, isEnabled ?? false)}
                   >
                     {isEnabled ? 'Close Room' : 'Open Room'}
                   </button>
+                </td>
+                <td>
+                  <Link to={`/form-results/${form.id}`}>View Results</Link>
                 </td>
               </tr>
             );

@@ -30,7 +30,7 @@ export const login = async (req: Request, res: Response) => {
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET!, {
       expiresIn: '1d',
     });
-    res.json({ token, role: user.isAdmin ? 'admin' : 'user' });
+    res.json({ token, role: user.isAdmin ? 'admin' : 'user', name: user.name });
     return;
   } catch (err) {
     console.error('Login error:', err);

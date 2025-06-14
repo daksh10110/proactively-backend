@@ -17,6 +17,7 @@ const LoginPage = () => {
       console.log('Login response:', res.data);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('role', res.data.role);
+      localStorage.setItem('name', res.data.name);
       navigate(res.data.role === 'admin' ? '/dashboard' : '/enter-form');
     } catch (err) {
       if (axios.isAxiosError(err)) {

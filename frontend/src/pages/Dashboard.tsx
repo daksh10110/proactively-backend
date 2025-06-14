@@ -35,11 +35,12 @@ const AdminFormDashboard = () => {
     const element = {
       label: currentElement.label,
       type: currentElement.type,
-      dropdownOptions:
+      options:
         currentElement.type.includes('dropdown') && currentElement.dropdownOptions
           ? currentElement.dropdownOptions.filter((o) => o.trim())
           : [],
     };
+
     setElements([...elements, element]);
     setCurrentElement({ label: '', type: '', dropdownOptions: [''] });
   };

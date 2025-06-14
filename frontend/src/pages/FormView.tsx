@@ -1,162 +1,191 @@
-import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import io from 'socket.io-client';
+import { useState, useEffect, useRef } from 'react';
+import io, { Socket } from 'socket.io-client';
 import axios from 'axios';
+import { useParams } from 'react-router-dom';
+import { ElementTypeName } from './enum'; // Adjust the import path as necessary
+
+const SOCKET_SERVER_URL = 'http://localhost:4000';
+
 
 interface ElementOption {
-  id: string;
-  label: string;
+    id: string;
+    label: string;
 }
 
 interface FormElement {
-  id: string;
-  label: string;
-  type: string;
-  dropdownOptions?: ElementOption[];
+    id: string;
+    label: string;
+    type: ElementTypeName;
+    dropdownOptions?: ElementOption[];
 }
 
 interface FormData {
-  id: string;
-  name: string;
-  elements: FormElement[];
+    id: string;
+    title: string;
+    elements: FormElement[];
 }
 
-const socket = io('http://localhost:4000');
-
 const FormView = () => {
-  const { formId } = useParams<{ formId: string }>();
-  const [form, setForm] = useState<FormData | null>(null);
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [locks, setLocks] = useState<Record<string, string>>({});
-  const [roomOpen, setRoomOpen] = useState<boolean | null>(null); // null = loading
-  const [activeUsers, setActiveUsers] = useState(0);
-  const inactivityTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  // const userId = useRef(`${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    const { formId } = useParams<{ formId: string }>();
 
-  useEffect(() => {
-    const initialize = async () => {
-      try {
-        // Step 1: Fetch form data
-        const formRes = await axios.get(`http://localhost:3000/api/forms/${formId}`);
-        setForm(formRes.data);
+    const [form, setForm] = useState<FormData | null>(null);
+    const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+    const [locks, setLocks] = useState<Record<string, string>>({});
+    const [userCount, setUserCount] = useState<number>(0);
+    const [statusMessage, setStatusMessage] = useState<string>('Connecting to server...');
+    const [isRoomOpen, setIsRoomOpen] = useState<boolean>(true);
 
-        // Step 2: Check room 
-        const statusRes = await axios.get(`http://localhost:4000/room-status/${formId}`);
-        console.log('Room status:', statusRes.data);
-        const isOpen = statusRes.data.isRoomEnabled
+    const socketRef = useRef<Socket | null>(null);
 
-        if (!isOpen) {
-          setRoomOpen(false);
-          return;
-        }
+    useEffect(() => {
+        const fetchForm = async () => {
+            try {
+                const res = await axios.get<FormData>(`http://localhost:3000/api/forms/${formId}`);
+                setForm(res.data);
+            } catch (error) {
+                console.error('Failed to fetch form:', error);
+                setStatusMessage('Error loading form.');
+            }
+        };
 
-        setRoomOpen(true);
+        fetchForm();
+    }, [formId]);
 
-        // Step 3: Join socket room only if it's open
-        socket.emit('join_room', formId);status
+    useEffect(() => {
+        if (!formId) return;
+
+        const socket = io(SOCKET_SERVER_URL);
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            console.log('Connected to server with ID:', socket.id);
+            setStatusMessage('Connected');
+            socket.emit('join_room', formId);
+        });
+
+        socket.on('disconnect', () => {
+            setStatusMessage('Disconnected from server.');
+        });
 
         socket.on('room_closed', () => {
-          setRoomOpen(false);
+            setIsRoomOpen(false);
+            setStatusMessage('This collaboration room is closed.');
         });
 
-        socket.on('user_count', (count: number) => {
-          setActiveUsers(count);
-        });
+        socket.on('user_count', (count: number) => setUserCount(count));
 
         socket.on('lock_update', ({ fieldId, lockedBy }: { fieldId: string; lockedBy: string | null }) => {
-          setLocks(prev => ({ ...prev, [fieldId]: lockedBy ?? '' }));
+            setLocks(prev => {
+                const newLocks = { ...prev };
+                if (lockedBy) newLocks[fieldId] = lockedBy;
+                else delete newLocks[fieldId];
+                return newLocks;
+            });
         });
 
         socket.on('field_update', ({ fieldId, value }: { fieldId: string; value: string }) => {
-          setFieldValues(prev => ({ ...prev, [fieldId]: value }));
+            setFieldValues(prev => ({ ...prev, [fieldId]: value }));
         });
-      } catch (error) {
-        console.error('Initialization error:', error);
-        setRoomOpen(false); // default to closed
-      }
+
+        return () => {
+            socket.emit('leave_room', formId);
+            socket.disconnect();
+        };
+    }, [formId]);
+
+    const handleFocus = (fieldId: string) => {
+        const socket = socketRef.current;
+        if (!locks[fieldId] || locks[fieldId] === socket?.id) {
+            socket?.emit('lock_field', { formId, fieldId });
+        }
     };
 
-    initialize();
-
-    return () => {
-      socket.emit('leave_room', formId);
-      Object.values(inactivityTimers.current).forEach(clearTimeout);
+    const handleChange = (fieldId: string, value: string) => {
+        setFieldValues(prev => ({ ...prev, [fieldId]: value }));
+        const socket = socketRef.current;
+        if (locks[fieldId] === socket?.id) {
+            socket?.emit('field_update', { formId, fieldId, value });
+        }
     };
-  }, [formId]);
 
-  const handleFocus = (fieldId: string) => {
-    if (locks[fieldId] && locks[fieldId] !== socket.id) return;
-    socket.emit('lock_field', { formId, fieldId });
-  };
+    const handleBlur = (fieldId: string) => {
+        const socket = socketRef.current;
+        if (locks[fieldId] === socket?.id) {
+            socket?.emit('unlock_field', { formId, fieldId });
+        }
+    };
 
-  const handleChange = (fieldId: string, value: string) => {
-    if (locks[fieldId] !== socket.id) return;
-    setFieldValues(prev => ({ ...prev, [fieldId]: value }));
-    socket.emit('field_update', { formId, fieldId, value });
+    if (!form) return <div>Loading form...</div>;
+    if (!isRoomOpen) return <div><h1>{form.title}</h1><p>{statusMessage}</p></div>;
 
-    clearTimeout(inactivityTimers.current[fieldId]);
-    inactivityTimers.current[fieldId] = setTimeout(() => {
-      socket.emit('unlock_field', { formId, fieldId });
-    }, 15000);
-  };
+    return (
+        <div style={{ fontFamily: 'sans-serif' }}>
+            <h1>{form.title}</h1>
+            <p>Active Users: <span>{userCount}</span></p>
+            <div>
+                {form.elements.map(el => {
+                    const myId = socketRef.current?.id;
+                    const isLockedByOther = locks[el.id] && locks[el.id] !== myId;
+                    const isLockedByYou = locks[el.id] === myId;
 
-  if (!form || roomOpen === null) return <div>Loading...</div>;
-  if (!roomOpen) return <div>Room is closed. You cannot edit this form.</div>;
+                    const style: React.CSSProperties = {
+                        marginBottom: '16px',
+                        padding: '8px',
+                        border: '1px solid',
+                        borderColor: isLockedByYou ? 'green' : '#ccc',
+                        backgroundColor: isLockedByOther ? '#f0f0f0' : 'white'
+                    };
 
-  return (
-    <div>
-      <h1>{form.name}</h1>
-      <p>Active users: {activeUsers}</p>
-      {form.elements.map((el) => {
-        const isLocked = locks[el.id] && locks[el.id] !== socket.id;
-        return (
-          <div key={el.id} style={{ marginBottom: '16px', padding: '4px', border: '1px solid #000' }}>
-            <label>{el.label}</label>
-            <br />
-            {el.type.startsWith('textbox') && (
-              <input
-                type="text"
-                value={fieldValues[el.id] || ''}
-                disabled={!!isLocked}
-                onFocus={() => handleFocus(el.id)}
-                onChange={(e) => handleChange(el.id, e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '4px',
-                  backgroundColor: isLocked ? '#f8d7da' : 'white'
-                }}
-              />
-            )}
-            {el.type.startsWith('dropdown') && (
-              <select
-                value={fieldValues[el.id] || ''}
-                disabled={!!isLocked}
-                onFocus={() => handleFocus(el.id)}
-                onChange={(e) => handleChange(el.id, e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '4px',
-                  backgroundColor: isLocked ? '#f8d7da' : 'white'
-                }}
-              >
-                <option value="">Select</option>
-                {el.dropdownOptions?.map((opt) => (
-                  <option key={opt.id} value={opt.label}>{opt.label}</option>
-                ))}
-              </select>
-            )}
-            {locks[el.id] && (
-              <p style={{ color: locks[el.id] !== socket.id ? 'red' : 'green', fontSize: '12px' }}>
-                {locks[el.id] === socket.id
-                  ? 'You are editing this field'
-                  : `Locked by: ${locks[el.id]}`}
-              </p>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+                    const isTextbox = [
+                        ElementTypeName.TEXTBOX_ALPHANUMERIC,
+                        ElementTypeName.TEXTBOX_NUMERIC
+                    ].includes(el.type as any);
+
+                    const isDropdown = [
+                        ElementTypeName.DROPDOWN_SINGLE,
+                        ElementTypeName.DROPDOWN_MULTI
+                    ].includes(el.type as any);
+
+                    return (
+                        <div key={el.id} style={style}>
+                            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>{el.label}</label>
+                            {isTextbox && (
+                                <input
+                                    type="text"
+                                    value={fieldValues[el.id] || ''}
+                                    disabled={!!isLockedByOther}
+                                    onFocus={() => handleFocus(el.id)}
+                                    onChange={(e) => handleChange(el.id, e.target.value)}
+                                    onBlur={() => handleBlur(el.id)}
+                                    style={{ width: '100%', padding: '6px' }}
+                                />
+                            )}
+                            {isDropdown && (
+                                <select
+                                    value={fieldValues[el.id] || ''}
+                                    disabled={!!isLockedByOther}
+                                    onFocus={() => handleFocus(el.id)}
+                                    onChange={(e) => handleChange(el.id, e.target.value)}
+                                    onBlur={() => handleBlur(el.id)}
+                                    style={{ width: '100%', padding: '6px' }}
+                                >
+                                    <option value="">Select an option</option>
+                                    {el.dropdownOptions?.map(opt => (
+                                        <option key={opt.id} value={opt.label}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            )}
+                            <p style={{ fontSize: '12px', color: isLockedByYou ? 'green' : 'red' }}>
+                                {isLockedByYou && 'You are editing this field.'}
+                                {isLockedByOther && `Locked by another user (${locks[el.id].substring(0, 6)}...)`}
+                            </p>
+                        </div>
+                    );
+                })}
+            </div>
+            <div>{statusMessage}</div>
+        </div>
+    );
 };
 
 export default FormView;
